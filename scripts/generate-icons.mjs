@@ -13,23 +13,25 @@ const gradient = `
     <stop offset="100%" stop-color="#4A49B8"/>
   </linearGradient>`
 
-// 首字母 W：圆头线条，几何居中，位于自适应图标安全区内
-const letterW = `
-  <g stroke="#FFFFFF" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <path d="M26 33 L38 75 L54 45 L70 75 L82 33"/>
+// 首字母 F：圆头线条，光学居中于自适应图标安全区内（中心 72dp 圆）
+const letterF = `
+  <g stroke="#FFFFFF" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M41 33 L41 75"/>
+    <path d="M41 33 L67 33"/>
+    <path d="M41 55 L59 55"/>
   </g>`
 
 const wrap = (body, defs = '') =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">${defs}${body}</svg>`
 
 const svgs = {
-  // 自适应图标前景：透明底 + 白色 W
-  foreground: wrap(letterW),
-  // 传统图标：渐变底 + 白色 W
-  launcher: wrap(`<rect width="108" height="108" fill="url(#bg)"/>${letterW}`, `<defs>${gradient}</defs>`),
+  // 自适应图标前景：透明底 + 白色 F
+  foreground: wrap(letterF),
+  // 传统图标：渐变底 + 白色 F
+  launcher: wrap(`<rect width="108" height="108" fill="url(#bg)"/>${letterF}`, `<defs>${gradient}</defs>`),
   // 圆形图标：圆形裁剪
   round: wrap(
-    `<g clip-path="url(#circle)"><rect width="108" height="108" fill="url(#bg)"/>${letterW}</g>`,
+    `<g clip-path="url(#circle)"><rect width="108" height="108" fill="url(#bg)"/>${letterF}</g>`,
     `<defs>${gradient}<clipPath id="circle"><circle cx="54" cy="54" r="54"/></clipPath></defs>`
   )
 }

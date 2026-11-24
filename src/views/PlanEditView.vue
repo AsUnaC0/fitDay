@@ -29,10 +29,16 @@ const errorMsg = ref('')
 const showEditor = ref(false)
 const editingIndex = ref(-1)
 /** input[type=number] 的 v-model 会自动转成 number，故用联合类型承接 */
-const form = reactive<{ name: string; sets: string | number; reps: string | number }>({
+const form = reactive<{
+  name: string
+  sets: string | number
+  reps: string | number
+  rest: string | number
+}>({
   name: '',
   sets: '',
-  reps: ''
+  reps: '',
+  rest: ''
 })
 
 const currentDay = computed(() => days.find((d) => d.weekday === activeWeekday.value)!)
@@ -43,6 +49,7 @@ function openAdd() {
   form.name = ''
   form.sets = ''
   form.reps = ''
+  form.rest = ''
   errorMsg.value = ''
   showEditor.value = true
 }
@@ -53,6 +60,8 @@ function openEdit(index: number) {
   form.name = ex.name
   form.sets = ex.sets != null ? String(ex.sets) : ''
   form.reps = ex.reps ?? ''
+  // 未配置过休息（undefined / 0）时留空，避免把 0 写进输入框
+  form.rest = ex.restSeconds ? String(ex.restSeconds) : ''
   errorMsg.value = ''
   showEditor.value = true
 }
@@ -61,6 +70,7 @@ function saveExercise() {
   const exName = form.name.trim()
   const setsRaw = String(form.sets ?? '').trim()
   const repsRaw = String(form.reps ?? '').trim()
+  const restRaw = String(form.rest ?? '').trim()
 
   if (!exName) {
     errorMsg.value = '请输入动作名称'
@@ -77,15 +87,33 @@ function saveExercise() {
       return
     }
   }
+  if (restRaw) {
+    const rest = Number(restRaw)
+    if (!Number.isInteger(rest) || rest < 0) {
+      errorMsg.value = '组间休息必须为不小于 0 的整数（秒）'
+      return
+    }
+  }
+
+  const prev = editingIndex.value >= 0 ? currentDay.value.exercises[editingIndex.value] : undefined
+  const nextReps = repsRaw || undefined
 
   const exercise: Exercise = {
-    id:
-      editingIndex.value >= 0
-        ? currentDay.value.exercises[editingIndex.value].id
-        : store.newExerciseId(),
+    id: prev ? prev.id : store.newExerciseId(),
     name: exName,
     sets: setsRaw ? Number(setsRaw) : undefined,
-    reps: repsRaw || undefined
+    reps: nextReps,
+    restSeconds: restRaw ? Number(restRaw) : undefined
+  }
+
+  // 编辑既有动作时保留表单里没有的字段：备注始终保留；次数文案未改动时
+  // 保留原 type / duration，避免把「计时训练 45 秒」这类配置覆盖成推断值。
+  if (prev) {
+    if (prev.note) exercise.note = prev.note
+    if ((prev.reps ?? undefined) === nextReps) {
+      if (prev.type != null) exercise.type = prev.type
+      if (prev.duration != null) exercise.duration = prev.duration
+    }
   }
 
   if (editingIndex.value >= 0) {
@@ -123,13 +151,19 @@ async function save() {
         errorMsg.value = `「${ex.name}」的组数必须为大于 0 的整数`
         return
       }
+      if (ex.restSeconds != null && (!Number.isInteger(ex.restSeconds) || ex.restSeconds < 0)) {
+        errorMsg.value = `「${ex.name}」的组间休息必须为不小于 0 的整数`
+        return
+      }
     }
   }
 
   await store.savePlan({
     id: isNew ? undefined : planId,
     name: planName,
-    days: days.map((d) => ({ weekday: d.weekday, exercises: d.exercises })),
+    // 保留日级字段（title / notes / isRestDay），只覆盖动作列表；
+    // 否则一保存就会把「胸部 + 肩部」这类当天主题和备注清空。
+    days: days.map((d) => ({ ...d, exercises: d.exercises })),
     setDefault: setDefault.value
   })
   showToast('已保存')
@@ -178,6 +212,13 @@ async function save() {
     </div>
 
     <section class="card">
+      <input
+        v-model="currentDay.title"
+        class="text-input day-title-input"
+        type="text"
+        maxlength="30"
+        placeholder="当天主题（可留空），如：胸部 + 肩部"
+      />
       <div class="day-head">
         <span class="day-count">{{ currentDay.exercises.length }} 个动作</span>
         <button class="mini-btn" @click="openAdd">
@@ -188,7 +229,7 @@ async function save() {
 
       <p v-if="currentDay.exercises.length === 0" class="day-empty">休息日，暂无动作</p>
 
-      <ul v-else class="ex-list">
+      <TransitionGroup v-else name="ex-list" tag="ul" class="ex-list">
         <li v-for="(ex, idx) in currentDay.exercises" :key="ex.id" class="ex-row">
           <div class="ex-info">
             <p class="ex-name">{{ ex.name }}</p>
@@ -197,6 +238,7 @@ async function save() {
               <template v-if="ex.sets && ex.reps"> × </template>
               <template v-if="ex.reps">{{ ex.reps }}</template>
               <template v-if="!ex.sets && !ex.reps">未填写组数/次数</template>
+              <template v-if="ex.restSeconds"> · 休息 {{ ex.restSeconds }} 秒</template>
             </p>
           </div>
           <div class="ex-tools">
@@ -219,7 +261,7 @@ async function save() {
             </button>
           </div>
         </li>
-      </ul>
+      </TransitionGroup>
     </section>
 
     <!-- 动作编辑弹窗 -->
@@ -255,6 +297,22 @@ async function save() {
               />
             </div>
           </div>
+
+          <div class="form-row">
+            <div class="form-col">
+              <label class="field-label" for="ex-rest">组间休息（秒）</label>
+              <input
+                id="ex-rest"
+                v-model="form.rest"
+                class="text-input"
+                type="number"
+                min="0"
+                inputmode="numeric"
+                placeholder="如 60，留空或 0 表示不休息"
+              />
+            </div>
+          </div>
+          <p class="field-hint">每完成一组后倒计时，最后一组结束不再休息。</p>
 
           <p v-if="errorMsg" class="modal-error">{{ errorMsg }}</p>
 
@@ -328,6 +386,10 @@ async function save() {
   background: rgba(255, 255, 255, 0.85);
 }
 
+.day-title-input {
+  margin-bottom: 12px;
+}
+
 .day-head {
   display: flex;
   align-items: center;
@@ -364,9 +426,23 @@ async function save() {
 }
 
 .ex-list {
+  position: relative;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* 上移 / 下移：Vue 的 FLIP 让行平滑滑动，而不是瞬间换位 */
+.ex-list-move,
+.ex-list-enter-active {
+  transition:
+    transform 0.24s cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 0.18s ease;
+}
+
+.ex-list-enter-from {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 
 .ex-row {
@@ -376,9 +452,9 @@ async function save() {
   padding: 11px 0;
   border-bottom: 1px solid var(--line);
 
+  /* 只去分隔线、不改 padding，保证每行等高，换位动画不会在末行跳一下 */
   &:last-child {
     border-bottom: none;
-    padding-bottom: 0;
   }
 }
 
@@ -436,6 +512,13 @@ async function save() {
 .form-col {
   flex: 1;
   min-width: 0;
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 
 .modal-error {

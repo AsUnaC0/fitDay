@@ -5,6 +5,7 @@ import { ArrowLeft, Check, RotateCcw } from 'lucide-vue-next'
 import { useWorkoutStore } from '@/stores/workout'
 import { useCountdown } from '@/composables/useCountdown'
 import { formatAmount } from '@/utils/exercise'
+import ProgressIndicator from '@/components/ProgressIndicator.vue'
 
 const store = useWorkoutStore()
 const router = useRouter()
@@ -24,8 +25,9 @@ useCountdown({
 })
 
 const seconds = computed(() => store.timerRemaining)
-const percent = computed(() =>
-  store.total ? Math.round((store.completedCount / store.total) * 100) : 0
+/** 当前组序号：已完成组数 + 1；全部完成时等于总组数 */
+const currentSet = computed(() =>
+  ex.value ? Math.min(store.currentCompletedSets + 1, ex.value.sets) : 0
 )
 const timerPercent = computed(() => {
   const d = store.timer.duration
@@ -98,33 +100,41 @@ async function handleNext() {
         <ArrowLeft :size="20" />
       </button>
       <h1 class="topbar-title">{{ store.title }}</h1>
-      <span class="topbar-meta">{{ store.completedCount }}/{{ store.total }}</span>
     </header>
 
-    <div class="track">
-      <div class="track-fill" :style="{ width: `${percent}%` }"></div>
-    </div>
+    <!-- 顶部整体进度 -->
+    <ProgressIndicator :current="store.completedCount" :total="store.total" label="整体进度" />
 
     <Transition name="item" mode="out-in">
-      <section v-if="ex" :key="ex.id" class="card stage">
-        <p class="eyebrow">{{ isTimerType ? '计时训练' : '次数训练' }}</p>
-        <h2 class="name">{{ ex.name }}</h2>
-        <p class="amount">{{ formatAmount(ex) }}</p>
-        <p v-if="ex.note" class="note">{{ ex.note }}</p>
+      <div v-if="ex" :key="ex.id" class="stage">
+        <!-- 当前动作 -->
+        <section class="card exercise-card">
+          <p class="eyebrow">{{ isTimerType ? '计时训练' : '次数训练' }}</p>
+          <h2 class="name">{{ ex.name }}</h2>
+          <p class="amount">
+            {{ formatAmount(ex) }}<span v-if="ex.restSeconds > 0" class="amount-rest"
+              >· 休息 {{ ex.restSeconds }} 秒</span
+            >
+          </p>
+          <p v-if="ex.note" class="note">{{ ex.note }}</p>
+        </section>
 
-        <!-- 组数进度：方块本身即状态，不再重复文字说明 -->
-        <div class="sets">
-          <span class="sets-label">组数</span>
+        <!-- 组数进度：独立盒子，与动作卡片分开 -->
+        <section class="card sets-card">
+          <div class="sets-head">
+            <span class="sets-label">组数进度</span>
+            <span class="sets-current">第 {{ currentSet }} 组 / 共 {{ ex.sets }} 组</span>
+          </div>
           <div class="sets-dots">
             <span v-for="i in ex.sets" :key="i" class="set" :class="`is-${setState(i - 1)}`">
               <Check v-if="setState(i - 1) === 'done'" :size="15" :stroke-width="3.5" />
               <template v-else>{{ i }}</template>
             </span>
           </div>
-        </div>
+        </section>
 
         <!-- 组间休息 -->
-        <div v-if="store.resting" class="panel">
+        <section v-if="store.resting" class="card panel">
           <div class="panel-head">
             <span class="panel-label">组间休息</span>
             <span class="panel-state">{{ restState }}</span>
@@ -137,10 +147,10 @@ async function handleNext() {
             </button>
             <button class="btn btn-ghost btn-sm" @click="store.skipRest">跳过</button>
           </div>
-        </div>
+        </section>
 
         <!-- 本组计时 -->
-        <div v-else-if="isTimerType && !store.canGoNext" class="panel">
+        <section v-else-if="isTimerType && !store.canGoNext" class="card panel">
           <div class="clock" :class="{ 'is-done': finished }">{{ formatClock(seconds) }}</div>
           <div class="track">
             <div class="track-fill" :style="{ width: `${timerPercent}%` }"></div>
@@ -150,8 +160,8 @@ async function handleNext() {
             <button class="btn btn-secondary btn-sm" @click="handleTimerPrimary">{{ timerLabel }}</button>
             <button class="btn btn-ghost btn-sm" @click="store.resetTimer">重置</button>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </Transition>
 
     <!-- 底部只保留一个主操作：未完成本组时是「完成本组」，全组完成后是「下一项」 -->
@@ -170,9 +180,20 @@ async function handleNext() {
 </template>
 
 <style scoped lang="less">
-/* 单屏内当前动作卡片垂直居中，与底部操作区形成对称留白 */
+/* 动作卡 / 组数卡 / 计时卡三块独立，紧接顶部整体进度向下排布 */
 .stage {
-  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 2px;
+
+  > * {
+    flex-shrink: 0;
+  }
+}
+
+.exercise-card {
+  padding: 18px;
 }
 
 .eyebrow {
@@ -197,6 +218,12 @@ async function handleNext() {
   font-variant-numeric: tabular-nums;
 }
 
+.amount-rest {
+  margin-left: 6px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
 .note {
   margin: 12px 0 0;
   padding: 10px 12px;
@@ -207,19 +234,28 @@ async function handleNext() {
   color: var(--text-soft);
 }
 
-.sets {
+/* 组数进度 */
+.sets-card {
+  padding: 14px 18px 16px;
+}
+
+.sets-head {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .sets-label {
-  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sets-current {
   font-size: 12px;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .sets-dots {
@@ -256,9 +292,7 @@ async function handleNext() {
 
 /* 计时 / 休息面板 */
 .panel {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
+  padding: 16px 18px;
 }
 
 .panel-head {
@@ -280,7 +314,7 @@ async function handleNext() {
 
 .clock {
   text-align: center;
-  font-size: 46px;
+  font-size: 44px;
   font-weight: 800;
   letter-spacing: 1px;
   line-height: 1.2;

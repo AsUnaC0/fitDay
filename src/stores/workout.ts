@@ -74,7 +74,17 @@ export const useWorkoutStore = defineStore('workout', () => {
     () => defaultPlan.value?.days.find((d) => d.weekday === getWeekday(now.value)) ?? null
   )
 
-  const title = computed(() => todayPlan.value?.title ?? '今日无训练计划')
+  /**
+   * 训练主题：优先用当天配置的 title。
+   * 没有配置时不能一律说「无训练计划」——当天有动作就按训练日兜底，
+   * 真正没有当天数据（或当天无动作）才提示无计划/休息。
+   */
+  const title = computed(() => {
+    const day = todayPlan.value
+    if (!day) return '今日无训练计划'
+    if (day.title) return day.title
+    return day.exercises.length > 0 ? '今日训练' : '今日休息'
+  })
   const notes = computed(() => todayPlan.value?.notes ?? '')
   const isRestDay = computed(
     () => todayPlan.value?.isRestDay ?? (todayPlan.value?.exercises.length ?? 0) === 0

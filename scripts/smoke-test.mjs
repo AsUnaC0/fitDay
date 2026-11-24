@@ -277,6 +277,63 @@ try {
     many.footerBottom <= many.viewport + 1,
     `${Math.round(many.footerBottom)}/${many.viewport}`
   )
+
+  /* ---------- F. 组间休息：编辑填写 → 非末组倒计时 → 末组不休息 ---------- */
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(
+    ({ weekday }) => {
+      localStorage.clear()
+      const days = [1, 2, 3, 4, 5, 6, 7].map((w) => ({ weekday: w, exercises: [] }))
+      days[weekday - 1].exercises = [
+        { id: 'rest-1', name: '休息动作', sets: 2, reps: '10', restSeconds: 3 }
+      ]
+      const seed = {
+        workout_plans: JSON.stringify([{ id: 'restplan', name: '休息计划', isDefault: true, days }]),
+        default_workout_plan_id: 'restplan',
+        workout_progress: '[]',
+        'fitday:preset-version': '3'
+      }
+      Object.entries(seed).forEach(([k, v]) => {
+        localStorage.setItem(k, v)
+        localStorage.setItem(`CapacitorStorage.${k}`, v)
+      })
+    },
+    { weekday: todayWeekday }
+  )
+  await page.goto(BASE)
+  await page.reload()
+  await page.waitForTimeout(600)
+  await page.locator('.plans-btn').click()
+  await page.waitForTimeout(500)
+  await page.locator('.plan').first().click()
+  await page.waitForTimeout(500)
+  await page.locator('.week-tab').nth(todayWeekday - 1).click()
+  await page.waitForTimeout(200)
+  check('动作列表展示组间休息', (await text('.ex-row .ex-meta')).includes('休息 3 秒'))
+  await page.locator('.ex-row').first().locator('.tool').nth(2).click()
+  await page.waitForTimeout(300)
+  check('编辑弹窗回填组间休息', (await page.inputValue('#ex-rest')) === '3')
+  await page.locator('.modal-actions .btn-ghost').click()
+  await page.waitForTimeout(200)
+
+  await page.goto(BASE)
+  await page.waitForTimeout(600)
+  await page.locator('.home-footer .btn-primary').click()
+  await page.waitForTimeout(500)
+  check('训练页展示组间休息秒数', (await text('.amount')).includes('休息 3 秒'))
+  check('未完成任何组时无休息面板', (await page.locator('.panel').count()) === 0)
+
+  await page.locator('.footer .btn-primary').click()
+  await page.waitForTimeout(500)
+  check('完成非末组后出现组间休息', (await page.locator('.panel').count()) === 1)
+  check('休息面板标题正确', (await text('.panel-label')).includes('组间休息'))
+  check('休息倒计时按填写秒数起算', /00:0[0-3]/.test(await text('.clock')), await text('.clock'))
+
+  await page.locator('.btn-ghost', { hasText: '跳过' }).click()
+  await page.waitForTimeout(400)
+  await page.locator('.footer .btn-primary').click()
+  await page.waitForTimeout(500)
+  check('完成最后一组后不再休息', (await page.locator('.panel').count()) === 0)
 } catch (e) {
   check('冒烟测试执行无异常', false, e.message)
 } finally {
