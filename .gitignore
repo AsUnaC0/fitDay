@@ -1,0 +1,16 @@
+node_modules
+dist
+.DS_Store
+*.local
+.vite
+
+.workbuddy-ai
+*.apk
+
+# Capacitor / Android build outputs
+android/.gradle
+android/build
+android/app/build
+android/local.properties
+android/.idea
+android/*.iml

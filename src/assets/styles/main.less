@@ -1,0 +1,165 @@
+:root {
+  --color-primary: #5b5bd6;
+  --color-primary-deep: #4a49b8;
+  --color-primary-soft: #eef0ff;
+  --color-accent: #8b7cf6;
+  --color-bg: #f5f8ff;
+  --color-bg-gradient: linear-gradient(160deg, #f7f9ff 0%, #eef3ff 100%);
+  --color-card: #ffffff;
+  --color-text: #222846;
+  --color-text-soft: #737b9c;
+  --color-text-muted: #a2a9c0;
+  --color-border: #edf0fa;
+  --color-success: #1fae7c;
+  --color-success-soft: #e7f8f1;
+  --shadow-card: 0 8px 30px rgba(80, 96, 170, 0.08);
+  --shadow-btn: 0 8px 20px rgba(91, 91, 214, 0.28);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  /* 外层不允许滚动，避免页面切换动画的位移触发 body 滚动条一闪而过 */
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
+    'Helvetica Neue', Arial, sans-serif;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+}
+
+.app-root {
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-bg-gradient);
+}
+
+.app-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-soft);
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+
+/* 页面统一容器：纯移动端全屏铺满，不做 PC 端居中/限宽适配。
+   滚动交给页面自身，动画的 translateY 位移由 .app-root 裁掉，不再出现全局滚动条。 */
+.page {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: calc(env(safe-area-inset-top) + 28px) 20px
+    calc(env(safe-area-inset-bottom) + 32px);
+  display: flex;
+  flex-direction: column;
+
+  /* 固定高度 + 内部滚动时，禁止子项被 flex 压缩；否则 hero-card 等会被压扁并被 overflow:hidden 裁切 */
+  > * {
+    flex-shrink: 0;
+  }
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.page--center {
+  justify-content: center;
+}
+
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+}
+
+.btn {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--color-accent), var(--color-primary));
+  color: #fff;
+  box-shadow: var(--shadow-btn);
+}
+
+.btn-secondary {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-soft);
+  border: 1px solid var(--color-border);
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  letter-spacing: 1px;
+  margin: 0 0 12px;
+}
+
+/* 页面切换动画 */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* 列表项进场动画 */
+.item-enter-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.item-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
