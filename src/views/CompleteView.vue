@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { ArrowLeft, CircleCheck, RotateCcw } from 'lucide-vue-next'
+import { CircleCheck, RotateCcw } from 'lucide-vue-next'
 import { useWorkoutStore } from '@/stores/workout'
 
 const store = useWorkoutStore()
@@ -45,7 +45,6 @@ async function handleReset() {
     <div class="complete-footer">
       <button class="btn btn-primary" @click="handleHome">
         返回首页
-        <ArrowLeft :size="18" />
       </button>
       <button class="btn btn-ghost reset-btn" @click="handleReset">
         <RotateCcw :size="17" />
@@ -84,6 +83,7 @@ async function handleReset() {
     opacity: 0;
     transform: scale(0.4);
   }
+
   100% {
     opacity: 1;
     transform: scale(1);

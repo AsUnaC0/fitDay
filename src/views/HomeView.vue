@@ -120,7 +120,7 @@ function handleStart() {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .today-chip {

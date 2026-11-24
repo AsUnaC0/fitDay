@@ -1,6 +1,7 @@
 import { Preferences } from '@capacitor/preferences'
-import { workoutPlan as seedPlan } from '@/data/workoutPlan'
-import type { WorkoutPlan, WorkoutProgress } from '@/types'
+import { PRESET_PLANS } from '@/data/presetPlans'
+import { PROGRESS_VERSION } from '@/types'
+import type { Exercise, WorkoutPlan, WorkoutProgress } from '@/types'
 
 /**
  * 本地持久化层。全部基于 Capacitor Preferences（原生持久化），
@@ -16,8 +17,20 @@ const KEYS = {
   defaultPlanId: 'default_workout_plan_id',
   progress: 'workout_progress',
   // 旧版本单条进度（迁移来源，迁移后保留不删）
-  legacyProgress: 'fitday:workout-progress'
+  legacyProgress: 'fitday:workout-progress',
+  // 预设计划注入版本：记录已注入过哪一批预设，避免用户删除后被重复加回
+  presetVersion: 'fitday:preset-version'
 } as const
+
+/**
+ * 当前预设计划版本。新增/更新预设计划时递增，老用户下次启动会自动迁移。
+ * v2：移除旧种子计划「我的训练计划」，仅保留哑铃训练 / 徒手训练，默认切到哑铃训练。
+ * v3：为预设动作补充训练执行元数据（type/duration/restSeconds），按动作 id 合并，不覆盖用户编辑。
+ */
+const PRESET_VERSION = '3'
+
+/** 旧种子计划 ID（v1 及以前自动生成），迁移时移除 */
+const LEGACY_SEED_PLAN_ID = 'plan-default-seed'
 
 /** 通用读取：Preferences 优先，localStorage 兜底 */
 async function read(key: string): Promise<string | null> {
@@ -62,38 +75,109 @@ export function generateId(prefix = 'id'): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-/** 将静态种子数据转换为第一条计划 */
-function createSeedPlan(): WorkoutPlan {
-  const now = Date.now()
-  return {
-    id: 'plan-default-seed',
-    name: '我的训练计划',
-    isDefault: true,
-    createdAt: now,
-    updatedAt: now,
-    // 深拷贝，避免与静态数据引用共享
-    days: JSON.parse(JSON.stringify(seedPlan)) as WorkoutPlan['days']
-  }
+/**
+ * 把最新预设中的执行元数据合并到本地已有计划（仅限预设 id）。
+ * 只补 type/duration/restSeconds 字段，且仅当最新预设明确配置了才写入；
+ * 用户的 name/sets/reps/note 等编辑保持不变。
+ */
+function mergePresetExerciseMeta(plan: WorkoutPlan): WorkoutPlan {
+  const source = PRESET_PLANS.find((p) => p.id === plan.id)
+  if (!source) return plan
+  const metaById = new Map<string, Exercise>()
+  source.days.forEach((d) => d.exercises.forEach((ex) => metaById.set(ex.id, ex)))
+
+  let changed = false
+  const days = plan.days.map((day) => ({
+    ...day,
+    exercises: day.exercises.map((ex) => {
+      const meta = metaById.get(ex.id)
+      if (!meta) return ex
+      const merged: Exercise = { ...ex }
+      if (meta.type != null && merged.type == null) {
+        merged.type = meta.type
+        changed = true
+      }
+      if (meta.duration != null && merged.duration == null) {
+        merged.duration = meta.duration
+        changed = true
+      }
+      if (meta.restSeconds != null && merged.restSeconds == null) {
+        merged.restSeconds = meta.restSeconds
+        changed = true
+      }
+      return merged
+    })
+  }))
+  return changed ? { ...plan, days } : plan
 }
 
 /**
- * 读取所有计划。若从未初始化，则执行一次性迁移：
- * 用现有版本 workoutPlan.ts 数据生成默认计划并落盘。
- * 已存在用户数据时绝不覆盖。
+ * 按预设版本迁移内置计划。
+ * - 补齐本地缺失的预设（按 id 判定），不覆盖用户保留的计划。
+ * - v2 起移除旧种子计划「我的训练计划」并清理其进度，默认切到哑铃训练。
+ * - v3 起为预设动作补充执行元数据（type/duration/restSeconds），按 id 合并。
+ * - 迁移后记录版本，用户主动删除的预设不会被重复加回。
+ */
+async function ensurePresetPlans(plans: WorkoutPlan[]): Promise<WorkoutPlan[]> {
+  const currentVersion = await read(KEYS.presetVersion)
+  if (currentVersion === PRESET_VERSION) return plans
+
+  // 1) 移除旧种子计划（v1 及以前自动生成），保留其余全部计划
+  const hadLegacySeed = plans.some((p) => p.id === LEGACY_SEED_PLAN_ID)
+  let merged = plans.filter((p) => p.id !== LEGACY_SEED_PLAN_ID)
+
+  // 2) 补齐缺失的内置预设
+  const existingIds = new Set(merged.map((p) => p.id))
+  const missing = PRESET_PLANS.filter((p) => !existingIds.has(p.id))
+  merged = [...merged, ...missing.map((p) => JSON.parse(JSON.stringify(p)) as WorkoutPlan)]
+
+  // 2.5) v3：为已存在的预设动作补充执行元数据（type/duration/restSeconds）。
+  //      按动作 id 合并，仅写入预设中明确配置的字段，不覆盖用户对 name/sets/reps/note 的编辑。
+  merged = merged.map((plan) => mergePresetExerciseMeta(plan))
+
+  // 3) 默认计划指向被移除的种子计划时，切到哑铃训练
+  const storedDefault = await loadDefaultPlanId()
+  if (hadLegacySeed && (!storedDefault || storedDefault === LEGACY_SEED_PLAN_ID)) {
+    const firstPreset = PRESET_PLANS[0]
+    if (merged.some((p) => p.id === firstPreset.id)) {
+      merged.forEach((p) => (p.isDefault = p.id === firstPreset.id))
+      await write(KEYS.defaultPlanId, firstPreset.id)
+    }
+  }
+
+  // 4) 清理被移除计划的进度记录
+  if (hadLegacySeed) {
+    const all = await loadAllProgress()
+    const cleaned = all.filter((p) => p.planId !== LEGACY_SEED_PLAN_ID)
+    if (cleaned.length !== all.length) await saveAllProgress(cleaned)
+  }
+
+  await write(KEYS.plans, JSON.stringify(merged))
+  await write(KEYS.presetVersion, PRESET_VERSION)
+  return merged
+}
+
+/**
+ * 读取所有计划。若从未初始化，则直接写入内置的两套预设计划
+ * （哑铃训练为默认）。已存在用户数据时不覆盖，仅按版本做迁移。
  */
 export async function loadPlans(): Promise<WorkoutPlan[]> {
   const raw = await read(KEYS.plans)
   if (raw) {
     const plans = parse<WorkoutPlan[]>(raw, [])
-    if (Array.isArray(plans) && plans.length > 0) return plans
+    if (Array.isArray(plans) && plans.length > 0) {
+      return ensurePresetPlans(plans)
+    }
   }
 
-  // 首次启动：迁移种子数据为默认计划
-  const seed = createSeedPlan()
-  await write(KEYS.plans, JSON.stringify([seed]))
-  await write(KEYS.defaultPlanId, seed.id)
-  await migrateLegacyProgress(seed.id)
-  return [seed]
+  // 首次启动：只写内置预设，不再生成「我的训练计划」
+  const initial = PRESET_PLANS.map((p) => JSON.parse(JSON.stringify(p)) as WorkoutPlan)
+  initial.forEach((p) => (p.isDefault = p.id === PRESET_PLANS[0].id))
+  await write(KEYS.plans, JSON.stringify(initial))
+  await write(KEYS.defaultPlanId, PRESET_PLANS[0].id)
+  await write(KEYS.presetVersion, PRESET_VERSION)
+  await migrateLegacyProgress(PRESET_PLANS[0].id)
+  return initial
 }
 
 export async function savePlans(plans: WorkoutPlan[]): Promise<void> {
@@ -109,20 +193,62 @@ export async function saveDefaultPlanId(id: string): Promise<void> {
   await write(KEYS.defaultPlanId, id)
 }
 
-/** 读取全部进度记录 */
+/**
+ * 读取全部进度记录，并把旧结构（v1：按动作 id 列表记录完成）升级到 v2。
+ * v2 增加按组记录、当前动作、训练阶段与计时状态。
+ */
 export async function loadAllProgress(): Promise<WorkoutProgress[]> {
   const raw = await read(KEYS.progress)
-  const list = parse<WorkoutProgress[]>(raw, [])
-  return Array.isArray(list) ? list : []
+  const list = parse<unknown[]>(raw, [])
+  if (!Array.isArray(list)) return []
+  return list.map((item) => migrateProgressRecord(item)).filter(Boolean) as WorkoutProgress[]
 }
 
 export async function saveAllProgress(list: WorkoutProgress[]): Promise<void> {
   await write(KEYS.progress, JSON.stringify(list))
 }
 
+/** 把任意历史版本的进度记录升级为当前结构 */
+function migrateProgressRecord(item: unknown): WorkoutProgress | null {
+  if (!item || typeof item !== 'object') return null
+  const raw = item as Partial<WorkoutProgress> & {
+    completedExerciseIds?: string[]
+  }
+  if (!raw.date || !raw.planId) return null
+
+  const completedIds = Array.isArray(raw.completedExerciseIds) ? raw.completedExerciseIds : []
+  const exerciseProgress =
+    raw.exerciseProgress && typeof raw.exerciseProgress === 'object' ? raw.exerciseProgress : {}
+
+  // v1：没有任何按组记录，但存在按动作记录的完成列表 → 转为"整项完成"
+  if (Object.keys(exerciseProgress).length === 0 && completedIds.length > 0) {
+    completedIds.forEach((id) => {
+      exerciseProgress[id] = { completedSets: 1, completed: true }
+    })
+  }
+
+  return {
+    version: PROGRESS_VERSION,
+    date: raw.date,
+    planId: raw.planId,
+    status: raw.status ?? 'not_started',
+    currentExerciseId: raw.currentExerciseId ?? '',
+    exerciseProgress,
+    phase: raw.phase ?? 'ready',
+    timer: raw.timer ?? {
+      kind: null,
+      status: 'idle',
+      endAt: null,
+      remaining: 0,
+      duration: 0
+    },
+    completedExerciseIds: completedIds
+  }
+}
+
 /**
- * 将旧版本单条进度迁移到新结构，关联到指定计划。
- * 迁移成功后保留旧 key（不删除），仅在新结构缺失记录时写入，避免覆盖用户新进度。
+ * 将很早以前的单条进度 key 迁移到多计划结构。
+ * 仅在新结构缺失对应记录时写入，避免覆盖用户新进度；迁移后保留旧 key。
  */
 async function migrateLegacyProgress(defaultPlanId: string): Promise<void> {
   const raw = await read(KEYS.legacyProgress)
@@ -140,11 +266,20 @@ async function migrateLegacyProgress(defaultPlanId: string): Promise<void> {
   )
   if (alreadyMigrated) return
 
-  existing.push({
+  const progress: WorkoutProgress = {
+    version: PROGRESS_VERSION,
     date: legacy.date,
     planId: defaultPlanId,
-    completedExerciseIds: legacy.completedExerciseIds,
-    status: legacy.status ?? 'in_progress'
+    status: legacy.status ?? 'in_progress',
+    currentExerciseId: legacy.completedExerciseIds[0] ?? '',
+    exerciseProgress: {},
+    phase: 'ready',
+    timer: { kind: null, status: 'idle', endAt: null, remaining: 0, duration: 0 },
+    completedExerciseIds: legacy.completedExerciseIds
+  }
+  legacy.completedExerciseIds.forEach((id) => {
+    progress.exerciseProgress[id] = { completedSets: 1, completed: true }
   })
+  existing.push(progress)
   await saveAllProgress(existing)
 }
