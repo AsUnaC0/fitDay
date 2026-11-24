@@ -1,14 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  ArrowRight,
-  CalendarDays,
-  CircleCheck,
-  Layers,
-  Moon,
-  Sparkles
-} from 'lucide-vue-next'
+import { ArrowRight, CalendarDays, CircleCheck, Layers, Moon, Sparkles } from 'lucide-vue-next'
 import { useWorkoutStore } from '@/stores/workout'
 import ExerciseItem from '@/components/ExerciseItem.vue'
 
@@ -17,8 +10,7 @@ const router = useRouter()
 
 const buttonText = computed(() => {
   if (store.isCompleted) return '查看完成结果'
-  if (store.progress.status === 'in_progress' || store.completedCount > 0) return '继续训练'
-  return '开始训练'
+  return store.completedCount > 0 ? '继续训练' : '开始训练'
 })
 
 function handleStart() {
@@ -57,8 +49,13 @@ function handleStart() {
 
       <section v-if="store.exercises.length" class="card stretch-card">
         <p class="section-title">轻度拉伸 · 自愿进行</p>
-        <ExerciseItem v-for="(exercise, index) in store.exercises" :key="exercise.id" :exercise="exercise"
-          :index="index" :completed="false" />
+        <ExerciseItem
+          v-for="(exercise, index) in store.exercises"
+          :key="exercise.id"
+          :exercise="exercise"
+          :index="index"
+          :completed="false"
+        />
         <p class="stretch-tip">拉伸内容不计入训练打卡</p>
       </section>
 
@@ -93,15 +90,23 @@ function handleStart() {
         <div v-if="store.notes" class="hero-note">{{ store.notes }}</div>
       </section>
 
+      <!-- 今日动作：占满剩余高度，超出时盒子内部滚动，页面保持一屏 -->
       <section class="card list-card">
         <div class="list-header">
           <p class="section-title">今日动作</p>
           <span class="list-count">{{ store.completedCount }} / {{ store.total }} 已完成</span>
         </div>
-        <TransitionGroup name="item">
-          <ExerciseItem v-for="(exercise, index) in store.exercises" :key="exercise.id" :exercise="exercise"
-            :index="index" :completed="store.isExerciseCompleted(exercise.id)" />
-        </TransitionGroup>
+        <div class="list-body">
+          <TransitionGroup name="item">
+            <ExerciseItem
+              v-for="(exercise, index) in store.exercises"
+              :key="exercise.id"
+              :exercise="exercise"
+              :index="index"
+              :completed="store.isExerciseCompleted(exercise.id)"
+            />
+          </TransitionGroup>
+        </div>
       </section>
 
       <div class="home-footer">
@@ -115,6 +120,13 @@ function handleStart() {
 </template>
 
 <style scoped lang="less">
+/* 首页沿用原有间距节奏，只把「今日动作」盒子改为可收缩 + 内部滚动 */
+.page {
+  gap: 0;
+  padding-top: calc(env(safe-area-inset-top) + 24px);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 20px);
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -130,8 +142,8 @@ function handleStart() {
   padding: 7px 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.75);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-soft);
+  border: 1px solid var(--line);
+  color: var(--text-soft);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -142,8 +154,8 @@ function handleStart() {
   gap: 5px;
   padding: 8px 12px;
   border-radius: 11px;
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--primary-soft);
+  color: var(--primary);
   font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
@@ -153,7 +165,7 @@ function handleStart() {
   position: relative;
   overflow: hidden;
   border-radius: 22px;
-  padding: 24px 22px;
+  padding: 22px;
   color: #fff;
   background: linear-gradient(135deg, #7d78f2 0%, #5b5bd6 55%, #4a49b8 100%);
   box-shadow: 0 12px 30px rgba(91, 91, 214, 0.28);
@@ -195,8 +207,8 @@ function handleStart() {
 
 .hero-title {
   position: relative;
-  margin: 12px 0 6px;
-  font-size: 24px;
+  margin: 10px 0 6px;
+  font-size: 23px;
   font-weight: 800;
   line-height: 1.35;
 }
@@ -209,43 +221,78 @@ function handleStart() {
 
 .hero-note {
   position: relative;
-  margin-top: 16px;
-  padding-top: 14px;
+  margin-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.2);
   font-size: 12px;
   opacity: 0.88;
   line-height: 1.5;
 }
 
+/* 今日动作盒子：内容超出时自身滚动，不把页面撑长 */
 .list-card {
   margin-top: 18px;
+  flex: 0 1 auto;
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 18px 18px 8px;
+  border-radius: 20px;
 }
 
 .list-header {
+  flex-shrink: 0;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 1px;
 }
 
 .list-count {
   font-size: 12px;
-  color: var(--color-primary);
+  color: var(--primary);
   font-weight: 600;
 }
 
+.list-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 .home-footer {
+  flex-shrink: 0;
   margin-top: auto;
-  padding-top: 26px;
+  padding-top: 18px;
 }
 
 .rest-card {
   border-radius: 22px;
-  padding: 34px 24px;
+  padding: 32px 24px;
   text-align: center;
   background: linear-gradient(160deg, #ffffff, #eef3ff);
-  border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-card);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+
+  .rest-title {
+    margin: 0 0 8px;
+    font-size: 21px;
+    font-weight: 800;
+  }
 }
 
 .rest-icon {
@@ -253,35 +300,31 @@ function handleStart() {
   height: 66px;
   margin: 0 auto 16px;
   border-radius: 50%;
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--primary-soft);
+  color: var(--primary);
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.rest-title {
-  margin: 0 0 8px;
-  font-size: 21px;
-  font-weight: 800;
 }
 
 .rest-desc {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: var(--color-text-soft);
+  color: var(--text-soft);
 }
 
 .stretch-card {
   margin-top: 18px;
+  border-radius: 20px;
+  padding: 18px;
 }
 
 .stretch-tip {
-  margin: 14px 0 0;
+  margin: 12px 0 0;
   text-align: center;
   font-size: 12px;
-  color: var(--color-text-muted);
+  color: var(--text-muted);
 }
 
 .rest-footer {
@@ -289,30 +332,31 @@ function handleStart() {
   padding-top: 28px;
   text-align: center;
   font-size: 13px;
-  color: var(--color-text-muted);
+  color: var(--text-muted);
 }
 
 .empty-card {
   margin-top: 30px;
   text-align: center;
   padding: 40px 24px;
+  border-radius: 20px;
+
+  h2 {
+    margin: 0 0 8px;
+    font-size: 18px;
+  }
+
+  p {
+    margin: 0 0 20px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-soft);
+  }
 }
 
 .empty-icon {
-  color: var(--color-primary);
+  color: var(--primary);
   margin-bottom: 12px;
-}
-
-.empty-card h2 {
-  margin: 0 0 8px;
-  font-size: 18px;
-}
-
-.empty-card p {
-  margin: 0 0 20px;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--color-text-soft);
 }
 
 .empty-action {

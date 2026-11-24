@@ -1,19 +1,30 @@
+/* ============================================================
+   FitDay 设计系统
+   - 色板 / 圆角 / 阴影 / 间距只在这里定义，页面不再各写一套
+   - 通用组件（按钮、卡片、顶栏、弹窗、表单、提示）也在这里，
+     页面样式只保留本页独有的布局
+   ============================================================ */
+
 :root {
-  --color-primary: #5b5bd6;
-  --color-primary-deep: #4a49b8;
-  --color-primary-soft: #eef0ff;
-  --color-accent: #8b7cf6;
-  --color-bg: #f5f8ff;
-  --color-bg-gradient: linear-gradient(160deg, #f7f9ff 0%, #eef3ff 100%);
-  --color-card: #ffffff;
-  --color-text: #222846;
-  --color-text-soft: #737b9c;
-  --color-text-muted: #a2a9c0;
-  --color-border: #edf0fa;
-  --color-success: #1fae7c;
-  --color-success-soft: #e7f8f1;
-  --shadow-card: 0 8px 30px rgba(80, 96, 170, 0.08);
-  --shadow-btn: 0 8px 20px rgba(91, 91, 214, 0.28);
+  --primary: #5b5bd6;
+  --primary-soft: #ededfb;
+  --success: #12a377;
+  --success-soft: #e6f6ef;
+  --danger: #d84a4a;
+  --warn: #a9660f;
+  --warn-soft: #fdf2e2;
+
+  --bg: #f5f6fa;
+  --card: #ffffff;
+  --text: #1c2033;
+  --text-soft: #666d85;
+  --text-muted: #9aa0b4;
+  --line: #ecedf4;
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 2px 12px rgba(28, 32, 51, 0.05);
+  --shadow-btn: 0 6px 16px rgba(91, 91, 214, 0.22);
 }
 
 * {
@@ -27,54 +38,43 @@ body,
   margin: 0;
   padding: 0;
   height: 100%;
-  /* 外层不允许滚动，避免页面切换动画的位移触发 body 滚动条一闪而过 */
-  overflow: hidden;
 }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
     'Helvetica Neue', Arial, sans-serif;
-  color: var(--color-text);
-  background: var(--color-bg);
+  color: var(--text);
+  background: var(--bg);
   -webkit-font-smoothing: antialiased;
+}
+
+/* 外层不滚动：页面自身滚动，避免切换动画的位移带动 body */
+#app {
+  overflow: hidden;
 }
 
 button {
   font-family: inherit;
+  font-size: inherit;
+  color: inherit;
   border: none;
+  background: none;
+  padding: 0;
   cursor: pointer;
 }
 
-.app-root {
-  height: 100%;
-  overflow: hidden;
-  background: var(--color-bg-gradient);
-}
-
-.app-loading {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-soft);
-  font-size: 15px;
-  letter-spacing: 1px;
-}
-
-/* 页面统一容器：纯移动端全屏铺满，不做 PC 端居中/限宽适配。
-   滚动交给页面自身，动画的 translateY 位移由 .app-root 裁掉，不再出现全局滚动条。 */
+/* ---------- 页面容器 ---------- */
 .page {
-  width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 14px);
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  padding: calc(env(safe-area-inset-top) + 28px) 20px
-    calc(env(safe-area-inset-bottom) + 32px);
-  display: flex;
-  flex-direction: column;
 
-  /* 固定高度 + 内部滚动时，禁止子项被 flex 压缩；否则 hero-card 等会被压扁并被 overflow:hidden 裁切 */
+  /* 固定高度 + 内部滚动时禁止子项被压缩，否则卡片会被压扁 */
   > * {
     flex-shrink: 0;
   }
@@ -84,82 +84,344 @@ button {
   }
 }
 
-.page--center {
+/* ---------- 顶栏 ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+}
+
+.topbar-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 顶栏右侧的次要信息（日期 / 进度计数） */
+.topbar-meta {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.icon-btn {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  gap: 5px;
+  background: var(--card);
+  color: var(--text-soft);
+  box-shadow: var(--shadow);
+  transition: transform 0.12s ease;
+
+  &:active {
+    transform: scale(0.94);
+  }
+
+  &--primary {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: var(--shadow-btn);
+  }
+
+  /* 带文字的入口按钮（如「计划」） */
+  &--text {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary);
+  }
 }
 
+/* ---------- 卡片 ---------- */
 .card {
-  background: var(--color-card);
-  border: 1px solid var(--color-border);
-  border-radius: 20px;
-  box-shadow: var(--shadow-card);
-  padding: 20px;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
 }
 
+/* ---------- 按钮 ---------- */
 .btn {
   width: 100%;
-  min-height: 56px;
-  border-radius: 16px;
-  font-size: 16px;
+  min-height: 50px;
+  border-radius: 14px;
+  font-size: 15px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  transition: transform 0.12s ease, opacity 0.15s ease;
 
-  &:active {
-    transform: scale(0.98);
+  &:active:not(:disabled) {
+    transform: scale(0.985);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    box-shadow: none;
   }
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--color-accent), var(--color-primary));
+  background: var(--primary);
   color: #fff;
   box-shadow: var(--shadow-btn);
 }
 
 .btn-secondary {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .btn-ghost {
   background: transparent;
-  color: var(--color-text-soft);
-  border: 1px solid var(--color-border);
+  color: var(--text-soft);
+  border: 1px solid var(--line);
 }
 
-.section-title {
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-sm {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+/* 页面底部的操作区 */
+.footer {
+  margin-top: auto;
+  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 弱化的文字操作（撤销等） */
+.link {
+  align-self: center;
+  padding: 6px;
   font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  letter-spacing: 1px;
-  margin: 0 0 12px;
+  color: var(--text-muted);
 }
 
-/* 页面切换动画 */
+/* ---------- 进度条（首页 / 训练页共用） ---------- */
+.track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  overflow: hidden;
+}
+
+.track-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width 0.3s ease;
+}
+
+/* ---------- 表单 ---------- */
+.text-input {
+  width: 100%;
+  height: 46px;
+  padding: 0 13px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fafbfe;
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+
+  &:focus {
+    border-color: var(--primary);
+    background: #fff;
+  }
+
+  &::placeholder {
+    color: var(--text-muted);
+  }
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.switch-input {
+  display: none;
+}
+
+.switch {
+  flex: 0 0 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: #d9dce8;
+  padding: 3px;
+  transition: background 0.2s ease;
+
+  i {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+    transition: transform 0.2s ease;
+  }
+
+  &.on {
+    background: var(--primary);
+
+    i {
+      transform: translateX(20px);
+    }
+  }
+}
+
+/* ---------- 提示 / 弹窗 ---------- */
+.alert {
+  padding: 10px 13px;
+  border-radius: 12px;
+  background: #fdecec;
+  color: #c23b3b;
+  font-size: 13px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 26px);
+  transform: translateX(-50%);
+  max-width: 86vw;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(28, 32, 51, 0.92);
+  color: #fff;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 60;
+}
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 24, 45, 0.42);
+}
+
+.modal {
+  width: 100%;
+  max-width: 340px;
+  padding: 22px 20px;
+}
+
+.modal-title {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.modal-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+
+.modal-warn {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+
+  .btn {
+    flex: 1;
+    min-height: 46px;
+  }
+}
+
+/* ---------- 过渡动画（只服务于操作反馈） ---------- */
 .page-enter-active,
 .page-leave-active {
-  transition: opacity 0.22s ease, transform 0.22s ease;
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
 .page-enter-from {
   opacity: 0;
-  transform: translateY(12px);
+  transform: translateY(8px);
 }
 
 .page-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-6px);
 }
 
-/* 列表项进场动画 */
 .item-enter-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity 0.22s ease, transform 0.22s ease;
 }
 
 .item-enter-from {
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(6px);
+}
+
+.modal-enter-active,
+.modal-leave-active,
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.18s ease;
+}
+
+.modal-enter-from,
+.modal-leave-to,
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
 }

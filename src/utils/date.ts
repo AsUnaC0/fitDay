@@ -1,12 +1,8 @@
-/** 星期标签，索引与 weekday（1=周一 ... 7=周日）一一对应 */
-export const WEEKDAY_LABELS: Record<number, string> = {
-  1: '星期一',
-  2: '星期二',
-  3: '星期三',
-  4: '星期四',
-  5: '星期五',
-  6: '星期六',
-  7: '星期日'
+/** 星期标签，索引与 weekday（1=周一 ... 7=周日）一一对应，0 位占位 */
+const WEEKDAY_LABELS = ['', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+
+export function weekdayLabel(weekday: number): string {
+  return WEEKDAY_LABELS[weekday] ?? ''
 }
 
 /** 返回 YYYY-MM-DD，使用本地时区（不使用会转成 UTC 的 toISOString） */
@@ -23,7 +19,7 @@ export function getWeekday(date: Date = new Date()): number {
   return day === 0 ? 7 : day
 }
 
-/** 格式化为 2026年11月23日 */
+/** 格式化为 11月24日（年份对当日训练无意义，省去以节省标题空间） */
 export function formatChineseDate(date: Date = new Date()): string {
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+  return `${date.getMonth() + 1}月${date.getDate()}日`
 }

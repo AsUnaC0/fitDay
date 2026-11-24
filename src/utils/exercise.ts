@@ -1,4 +1,4 @@
-import type { Exercise, ResolvedExercise, ExerciseProgress } from '@/types'
+import type { Exercise, ResolvedExercise } from '@/types'
 
 /**
  * 动作数据规范化工具。
@@ -27,12 +27,11 @@ function parseSeconds(text: string | undefined): number | null {
 export function normalizeExercise(ex: Exercise): ResolvedExercise {
   const parsedSeconds = parseSeconds(ex.reps)
   const type = ex.type ?? (parsedSeconds != null ? 'timer' : 'reps')
-  const sets = Math.max(1, Math.floor(ex.sets ?? 1))
   return {
     id: ex.id,
     name: ex.name,
     type,
-    sets,
+    sets: Math.max(1, Math.floor(ex.sets ?? 1)),
     reps: ex.reps ?? '',
     duration: Math.max(1, Math.floor(ex.duration ?? parsedSeconds ?? 30)),
     restSeconds: Math.max(0, Math.floor(ex.restSeconds ?? 0)),
@@ -40,12 +39,12 @@ export function normalizeExercise(ex: Exercise): ResolvedExercise {
   }
 }
 
-/** 批量规范化 */
-export function normalizeExercises(list: Exercise[]): ResolvedExercise[] {
-  return list.map(normalizeExercise)
-}
-
-/** 创建一个全新的动作进度 */
-export function createExerciseProgress(): ExerciseProgress {
-  return { completedSets: 0, completed: false }
+/**
+ * 动作的用量文案：次数训练 → "3 × 12–15"，计时训练 → "3 × 20秒"。
+ * 首页列表、训练页共用同一份格式，避免两处各写一套拼接逻辑。
+ */
+export function formatAmount(ex: ResolvedExercise): string {
+  if (ex.type === 'timer') return `${ex.sets} × ${ex.duration}秒`
+  if (ex.sets > 1) return ex.reps ? `${ex.sets} × ${ex.reps}` : `${ex.sets} 组`
+  return ex.reps
 }

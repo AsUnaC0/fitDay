@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { Check } from 'lucide-vue-next'
-import type { Exercise } from '@/data/workoutPlan'
+import type { ResolvedExercise } from '@/types'
+import { formatAmount } from '@/utils/exercise'
 
 withDefaults(
   defineProps<{
-    exercise: Exercise
+    exercise: ResolvedExercise
     index: number
     completed: boolean
   }>(),
@@ -21,11 +22,7 @@ withDefaults(
 
     <div class="exercise-content">
       <div class="exercise-name">{{ exercise.name }}</div>
-      <div v-if="exercise.sets || exercise.reps" class="exercise-meta">
-        <span v-if="exercise.sets">{{ exercise.sets }}</span>
-        <span v-if="exercise.sets && exercise.reps">×</span>
-        <span v-if="exercise.reps">{{ exercise.reps }}</span>
-      </div>
+      <div v-if="formatAmount(exercise)" class="exercise-meta">{{ formatAmount(exercise) }}</div>
       <div v-if="exercise.note" class="exercise-note">{{ exercise.note }}</div>
     </div>
 
@@ -38,8 +35,8 @@ withDefaults(
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 4px;
-  border-bottom: 1px solid var(--color-border);
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
 
   &:last-child {
     border-bottom: none;
@@ -50,8 +47,8 @@ withDefaults(
   flex: 0 0 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--primary-soft);
+  color: var(--primary);
   font-size: 13px;
   font-weight: 700;
   display: flex;
@@ -67,41 +64,39 @@ withDefaults(
 .exercise-name {
   font-size: 15px;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--text);
   line-height: 1.4;
 }
 
 .exercise-meta {
   margin-top: 3px;
   font-size: 13px;
-  color: var(--color-text-soft);
-  display: flex;
-  gap: 5px;
+  color: var(--text-soft);
 }
 
 .exercise-note {
   margin-top: 4px;
   font-size: 12px;
-  color: var(--color-text-muted);
+  color: var(--text-muted);
 }
 
 .exercise-done-text {
-  font-size: 12px;
-  color: var(--color-success);
   flex-shrink: 0;
+  font-size: 12px;
+  color: var(--success);
 }
 
 .is-completed {
   .exercise-index {
-    background: var(--color-success-soft);
-    color: var(--color-success);
+    background: var(--success-soft);
+    color: var(--success);
   }
 
   .exercise-name,
   .exercise-meta {
-    color: var(--color-text-muted);
+    color: var(--text-muted);
     text-decoration: line-through;
-    text-decoration-color: var(--color-text-muted);
+    text-decoration-color: var(--text-muted);
   }
 
   .exercise-note {

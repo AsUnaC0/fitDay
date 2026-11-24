@@ -16,15 +16,10 @@
  */
 import type { WorkoutPlan } from '@/types'
 
-/** 固定时间戳：预设计划的创建/更新时间，避免每次注入产生随机值 */
-const PRESET_TS = 1735689600000 // 2025-01-01 00:00:00 UTC
-
 const dumbbellPlan: WorkoutPlan = {
   id: 'preset-dumbbell',
   name: '哑铃训练',
   isDefault: false,
-  createdAt: PRESET_TS,
-  updatedAt: PRESET_TS,
   days: [
     {
       weekday: 1,
@@ -111,8 +106,6 @@ const bodyweightPlan: WorkoutPlan = {
   id: 'preset-bodyweight',
   name: '徒手训练',
   isDefault: false,
-  createdAt: PRESET_TS,
-  updatedAt: PRESET_TS,
   days: [
     {
       weekday: 1,

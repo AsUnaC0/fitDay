@@ -24,11 +24,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-root">
-    <RouterView v-slot="{ Component }">
-      <Transition name="page" mode="out-in">
-        <component :is="Component" />
-      </Transition>
-    </RouterView>
-  </div>
+  <RouterView v-slot="{ Component }">
+    <Transition name="page" mode="out-in">
+      <component :is="Component" />
+    </Transition>
+  </RouterView>
 </template>

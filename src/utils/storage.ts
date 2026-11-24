@@ -1,7 +1,6 @@
 import { Preferences } from '@capacitor/preferences'
 import { PRESET_PLANS } from '@/data/presetPlans'
-import { PROGRESS_VERSION } from '@/types'
-import type { Exercise, WorkoutPlan, WorkoutProgress } from '@/types'
+import type { Exercise, WorkoutPlan, WorkoutProgress, TimerState } from '@/types'
 
 /**
  * 本地持久化层。全部基于 Capacitor Preferences（原生持久化），
@@ -70,6 +69,10 @@ function parse<T>(raw: string | null, fallback: T): T {
   }
 }
 
+function idleTimer(): TimerState {
+  return { kind: null, status: 'idle', endAt: null, remaining: 0, duration: 0 }
+}
+
 /** 生成一个唯一 ID（时间戳 + 随机串，复制计划时也用它） */
 export function generateId(prefix = 'id'): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -131,8 +134,7 @@ async function ensurePresetPlans(plans: WorkoutPlan[]): Promise<WorkoutPlan[]> {
   const missing = PRESET_PLANS.filter((p) => !existingIds.has(p.id))
   merged = [...merged, ...missing.map((p) => JSON.parse(JSON.stringify(p)) as WorkoutPlan)]
 
-  // 2.5) v3：为已存在的预设动作补充执行元数据（type/duration/restSeconds）。
-  //      按动作 id 合并，仅写入预设中明确配置的字段，不覆盖用户对 name/sets/reps/note 的编辑。
+  // 2.5) v3：为已存在的预设动作补充执行元数据，按动作 id 合并，不覆盖用户编辑。
   merged = merged.map((plan) => mergePresetExerciseMeta(plan))
 
   // 3) 默认计划指向被移除的种子计划时，切到哑铃训练
@@ -193,10 +195,7 @@ export async function saveDefaultPlanId(id: string): Promise<void> {
   await write(KEYS.defaultPlanId, id)
 }
 
-/**
- * 读取全部进度记录，并把旧结构（v1：按动作 id 列表记录完成）升级到 v2。
- * v2 增加按组记录、当前动作、训练阶段与计时状态。
- */
+/** 读取全部进度记录，并把历史结构升级为当前结构 */
 export async function loadAllProgress(): Promise<WorkoutProgress[]> {
   const raw = await read(KEYS.progress)
   const list = parse<unknown[]>(raw, [])
@@ -208,41 +207,33 @@ export async function saveAllProgress(list: WorkoutProgress[]): Promise<void> {
   await write(KEYS.progress, JSON.stringify(list))
 }
 
-/** 把任意历史版本的进度记录升级为当前结构 */
+/**
+ * 把任意历史版本的进度记录升级为当前结构。
+ * 历史记录里的 status / phase / version / completedExerciseIds 一律忽略：
+ * 完成状态由 exerciseProgress 完整表达，休息状态由 timer.kind 表达。
+ */
 function migrateProgressRecord(item: unknown): WorkoutProgress | null {
   if (!item || typeof item !== 'object') return null
-  const raw = item as Partial<WorkoutProgress> & {
-    completedExerciseIds?: string[]
-  }
+  const raw = item as Partial<WorkoutProgress> & { completedExerciseIds?: string[] }
   if (!raw.date || !raw.planId) return null
 
-  const completedIds = Array.isArray(raw.completedExerciseIds) ? raw.completedExerciseIds : []
   const exerciseProgress =
     raw.exerciseProgress && typeof raw.exerciseProgress === 'object' ? raw.exerciseProgress : {}
 
   // v1：没有任何按组记录，但存在按动作记录的完成列表 → 转为"整项完成"
-  if (Object.keys(exerciseProgress).length === 0 && completedIds.length > 0) {
-    completedIds.forEach((id) => {
+  const legacyIds = Array.isArray(raw.completedExerciseIds) ? raw.completedExerciseIds : []
+  if (Object.keys(exerciseProgress).length === 0 && legacyIds.length > 0) {
+    legacyIds.forEach((id) => {
       exerciseProgress[id] = { completedSets: 1, completed: true }
     })
   }
 
   return {
-    version: PROGRESS_VERSION,
     date: raw.date,
     planId: raw.planId,
-    status: raw.status ?? 'not_started',
     currentExerciseId: raw.currentExerciseId ?? '',
     exerciseProgress,
-    phase: raw.phase ?? 'ready',
-    timer: raw.timer ?? {
-      kind: null,
-      status: 'idle',
-      endAt: null,
-      remaining: 0,
-      duration: 0
-    },
-    completedExerciseIds: completedIds
+    timer: raw.timer ?? idleTimer()
   }
 }
 
@@ -253,11 +244,7 @@ function migrateProgressRecord(item: unknown): WorkoutProgress | null {
 async function migrateLegacyProgress(defaultPlanId: string): Promise<void> {
   const raw = await read(KEYS.legacyProgress)
   if (!raw) return
-  const legacy = parse<{
-    date: string
-    completedExerciseIds: string[]
-    status?: WorkoutProgress['status']
-  } | null>(raw, null)
+  const legacy = parse<{ date: string; completedExerciseIds: string[] } | null>(raw, null)
   if (!legacy || !legacy.date || !Array.isArray(legacy.completedExerciseIds)) return
 
   const existing = await loadAllProgress()
@@ -267,15 +254,11 @@ async function migrateLegacyProgress(defaultPlanId: string): Promise<void> {
   if (alreadyMigrated) return
 
   const progress: WorkoutProgress = {
-    version: PROGRESS_VERSION,
     date: legacy.date,
     planId: defaultPlanId,
-    status: legacy.status ?? 'in_progress',
     currentExerciseId: legacy.completedExerciseIds[0] ?? '',
     exerciseProgress: {},
-    phase: 'ready',
-    timer: { kind: null, status: 'idle', endAt: null, remaining: 0, duration: 0 },
-    completedExerciseIds: legacy.completedExerciseIds
+    timer: idleTimer()
   }
   legacy.completedExerciseIds.forEach((id) => {
     progress.exerciseProgress[id] = { completedSets: 1, completed: true }

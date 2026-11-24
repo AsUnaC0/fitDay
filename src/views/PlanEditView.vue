@@ -1,29 +1,21 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowUp,
-  Check,
-  Pencil,
-  Plus,
-  Save,
-  Trash2
-} from 'lucide-vue-next'
+import { ArrowDown, ArrowLeft, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-vue-next'
 import { useWorkoutStore } from '@/stores/workout'
-import { WEEKDAY_LABELS } from '@/utils/date'
+import { useToast } from '@/composables/useToast'
+import { weekdayLabel } from '@/utils/date'
 import type { Exercise, WorkoutDay } from '@/types'
 
 const store = useWorkoutStore()
 const route = useRoute()
 const router = useRouter()
+const { toast, showToast } = useToast()
 
 const planId = typeof route.params.id === 'string' ? route.params.id : ''
 const isNew = !planId
 const existing = planId ? store.getPlanById(planId) : null
 
-// 草稿状态
 const name = ref(existing?.name ?? '')
 const setDefault = ref(existing?.isDefault ?? false)
 const activeWeekday = ref(1)
@@ -34,25 +26,17 @@ const days = reactive<WorkoutDay[]>(
 )
 
 const errorMsg = ref('')
-const toast = ref('')
-let toastTimer: ReturnType<typeof setTimeout> | undefined
-
-function showToast(text: string) {
-  toast.value = text
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast.value = ''), 2200)
-}
-
-const currentDay = computed(() => days.find((d) => d.weekday === activeWeekday.value)!)
-
-/** 动作编辑弹窗状态 */
 const showEditor = ref(false)
 const editingIndex = ref(-1)
+/** input[type=number] 的 v-model 会自动转成 number，故用联合类型承接 */
 const form = reactive<{ name: string; sets: string | number; reps: string | number }>({
   name: '',
   sets: '',
   reps: ''
 })
+
+const currentDay = computed(() => days.find((d) => d.weekday === activeWeekday.value)!)
+const dayCount = (weekday: number) => days.find((d) => d.weekday === weekday)?.exercises.length ?? 0
 
 function openAdd() {
   editingIndex.value = -1
@@ -75,7 +59,6 @@ function openEdit(index: number) {
 
 function saveExercise() {
   const exName = form.name.trim()
-  // input[type=number] 的 v-model 可能是 number，统一转字符串再处理
   const setsRaw = String(form.sets ?? '').trim()
   const repsRaw = String(form.reps ?? '').trim()
 
@@ -96,7 +79,10 @@ function saveExercise() {
   }
 
   const exercise: Exercise = {
-    id: editingIndex.value >= 0 ? currentDay.value.exercises[editingIndex.value].id : store.newExerciseId(),
+    id:
+      editingIndex.value >= 0
+        ? currentDay.value.exercises[editingIndex.value].id
+        : store.newExerciseId(),
     name: exName,
     sets: setsRaw ? Number(setsRaw) : undefined,
     reps: repsRaw || undefined
@@ -114,30 +100,19 @@ function removeExercise(index: number) {
   currentDay.value.exercises.splice(index, 1)
 }
 
-function moveUp(index: number) {
-  if (index <= 0) return
+function move(index: number, offset: number) {
   const list = currentDay.value.exercises
-  ;[list[index - 1], list[index]] = [list[index], list[index - 1]]
-}
-
-function moveDown(index: number) {
-  const list = currentDay.value.exercises
-  if (index >= list.length - 1) return
-  ;[list[index + 1], list[index]] = [list[index], list[index + 1]]
-}
-
-function dayExerciseCount(weekday: number): number {
-  return days.find((d) => d.weekday === weekday)?.exercises.length ?? 0
+  const target = index + offset
+  if (target < 0 || target >= list.length) return
+  ;[list[index], list[target]] = [list[target], list[index]]
 }
 
 async function save() {
   const planName = name.value.trim()
   if (!planName) {
     errorMsg.value = '请输入计划名称'
-    document.querySelector('.page')?.scrollTo({ top: 0, behavior: 'smooth' })
     return
   }
-  // 校验所有动作：名称非空、组数为正整数（若填）
   for (const day of days) {
     for (const ex of day.exercises) {
       if (!ex.name.trim()) {
@@ -158,108 +133,94 @@ async function save() {
     setDefault: setDefault.value
   })
   showToast('已保存')
-  setTimeout(() => router.push('/plans'), 500)
-}
-
-function goBack() {
-  router.push('/plans')
+  setTimeout(() => router.push('/plans'), 400)
 }
 </script>
 
 <template>
   <main class="page">
-    <header class="edit-header">
-      <button class="back-btn" aria-label="返回计划列表" @click="goBack">
+    <header class="topbar">
+      <button class="icon-btn" aria-label="返回计划列表" @click="router.push('/plans')">
         <ArrowLeft :size="20" />
       </button>
-      <h1 class="header-title">{{ isNew ? '新建计划' : '编辑计划' }}</h1>
+      <h1 class="topbar-title">{{ isNew ? '新建计划' : '编辑计划' }}</h1>
+      <button class="save-btn" @click="save">保存</button>
     </header>
 
-    <div v-if="errorMsg && !showEditor" class="error-banner">{{ errorMsg }}</div>
+    <p v-if="errorMsg && !showEditor" class="alert">{{ errorMsg }}</p>
 
-    <!-- 基本信息 -->
-    <section class="card basic-card">
-      <label class="field-label" for="plan-name">计划名称</label>
+    <section class="card">
       <input
-        id="plan-name"
         v-model="name"
         class="text-input"
         type="text"
-        placeholder="例如：居家徒手训练"
+        placeholder="计划名称，如：居家徒手训练"
         maxlength="30"
       />
-
       <label class="switch-row" for="default-switch">
-        <span class="switch-label">
-          <strong>设为默认计划</strong>
-          <small>默认计划用于首页今日训练</small>
-        </span>
-        <input
-          id="default-switch"
-          v-model="setDefault"
-          type="checkbox"
-          class="switch-input"
-        />
-        <span class="switch-visual" :class="{ on: setDefault }"><span class="knob"></span></span>
+        <span>设为默认计划</span>
+        <input id="default-switch" v-model="setDefault" type="checkbox" class="switch-input" />
+        <span class="switch" :class="{ on: setDefault }"><i></i></span>
       </label>
     </section>
 
-    <!-- 周一至周日切换 -->
     <div class="week-tabs">
       <button
         v-for="wd in 7"
         :key="wd"
         class="week-tab"
-        :class="{ active: activeWeekday === wd, has: dayExerciseCount(wd) > 0 }"
+        :class="{ active: activeWeekday === wd }"
         @click="activeWeekday = wd"
       >
-        {{ WEEKDAY_LABELS[wd].replace('星期', '') }}
-        <span v-if="dayExerciseCount(wd) > 0" class="tab-dot"></span>
+        {{ weekdayLabel(wd).slice(-1) }}
+        <i v-if="dayCount(wd) > 0" class="tab-dot"></i>
       </button>
     </div>
 
-    <!-- 当天动作列表 -->
-    <section class="card day-card">
+    <section class="card">
       <div class="day-head">
-        <h2 class="day-title">{{ WEEKDAY_LABELS[activeWeekday] }}</h2>
         <span class="day-count">{{ currentDay.exercises.length }} 个动作</span>
+        <button class="mini-btn" @click="openAdd">
+          <Plus :size="14" />
+          添加
+        </button>
       </div>
 
-      <div v-if="currentDay.exercises.length === 0" class="day-empty">
-        暂无动作，休息日（点击右下角添加）
-      </div>
+      <p v-if="currentDay.exercises.length === 0" class="day-empty">休息日，暂无动作</p>
 
-      <div v-else class="ex-list">
-        <div v-for="(ex, idx) in currentDay.exercises" :key="ex.id" class="ex-row">
+      <ul v-else class="ex-list">
+        <li v-for="(ex, idx) in currentDay.exercises" :key="ex.id" class="ex-row">
           <div class="ex-info">
-            <div class="ex-name">{{ ex.name }}</div>
-            <div class="ex-meta">
-              <span v-if="ex.sets">{{ ex.sets }} 组</span>
-              <span v-if="ex.sets && ex.reps">×</span>
-              <span v-if="ex.reps">{{ ex.reps }}</span>
-              <span v-if="!ex.sets && !ex.reps" class="muted">未填写组数/次数</span>
-            </div>
+            <p class="ex-name">{{ ex.name }}</p>
+            <p class="ex-meta">
+              <template v-if="ex.sets">{{ ex.sets }} 组</template>
+              <template v-if="ex.sets && ex.reps"> × </template>
+              <template v-if="ex.reps">{{ ex.reps }}</template>
+              <template v-if="!ex.sets && !ex.reps">未填写组数/次数</template>
+            </p>
           </div>
           <div class="ex-tools">
-            <button class="tool" aria-label="上移" @click="moveUp(idx)"><ArrowUp :size="16" /></button>
-            <button class="tool" aria-label="下移" @click="moveDown(idx)"><ArrowDown :size="16" /></button>
-            <button class="tool" aria-label="编辑" @click="openEdit(idx)"><Pencil :size="16" /></button>
+            <button class="tool" :disabled="idx === 0" aria-label="上移" @click="move(idx, -1)">
+              <ArrowUp :size="15" />
+            </button>
+            <button
+              class="tool"
+              :disabled="idx === currentDay.exercises.length - 1"
+              aria-label="下移"
+              @click="move(idx, 1)"
+            >
+              <ArrowDown :size="15" />
+            </button>
+            <button class="tool" aria-label="编辑" @click="openEdit(idx)">
+              <Pencil :size="15" />
+            </button>
             <button class="tool tool--danger" aria-label="删除" @click="removeExercise(idx)">
-              <Trash2 :size="16" />
+              <Trash2 :size="15" />
             </button>
           </div>
-        </div>
-      </div>
+        </li>
+      </ul>
     </section>
-
-    <div class="edit-footer">
-      <button class="btn btn-secondary add-exercise" @click="openAdd">
-        <Plus :size="18" /> 添加动作
-      </button>
-      <button class="btn btn-primary" @click="save">
-        <Save :size="18" /> 保存计划
-      </button>
-    </div>
 
     <!-- 动作编辑弹窗 -->
     <Transition name="modal">
@@ -295,13 +256,11 @@ function goBack() {
             </div>
           </div>
 
-          <div v-if="errorMsg" class="modal-error">{{ errorMsg }}</div>
+          <p v-if="errorMsg" class="modal-error">{{ errorMsg }}</p>
 
           <div class="modal-actions">
             <button class="btn btn-ghost" @click="showEditor = false">取消</button>
-            <button class="btn btn-primary" @click="saveExercise">
-              <Check :size="17" /> 确定
-            </button>
+            <button class="btn btn-primary" @click="saveExercise">确定</button>
           </div>
         </div>
       </div>
@@ -314,215 +273,112 @@ function goBack() {
 </template>
 
 <style scoped lang="less">
-.edit-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.back-btn {
-  width: 38px;
-  height: 38px;
+.save-btn {
   flex-shrink: 0;
-  border-radius: 12px;
-  background: #fff;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-soft);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.header-title {
-  margin: 0;
-  font-size: 19px;
-  font-weight: 800;
-}
-
-.error-banner {
-  margin-bottom: 14px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: #fdecec;
-  color: #c0392b;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
   font-size: 13px;
-}
-
-.basic-card {
-  margin-bottom: 18px;
-}
-
-.field-label {
-  display: block;
-  font-size: 12px;
   font-weight: 600;
-  color: var(--color-text-soft);
-  margin-bottom: 7px;
-}
+  box-shadow: var(--shadow-btn);
+  transition: transform 0.12s ease;
 
-.text-input {
-  width: 100%;
-  min-height: 46px;
-  padding: 0 14px;
-  border-radius: 12px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-size: 15px;
-  outline: none;
-
-  &:focus {
-    border-color: var(--color-primary);
+  &:active {
+    transform: scale(0.95);
   }
-
-  &::placeholder {
-    color: var(--color-text-muted);
-  }
-}
-
-.switch-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-border);
-  cursor: pointer;
-}
-
-.switch-label {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-
-  strong {
-    font-size: 14px;
-    font-weight: 600;
-  }
-
-  small {
-    font-size: 11px;
-    color: var(--color-text-muted);
-    margin-top: 2px;
-  }
-}
-
-.switch-input {
-  display: none;
-}
-
-.switch-visual {
-  flex: 0 0 46px;
-  height: 26px;
-  border-radius: 999px;
-  background: #d5d9e6;
-  padding: 3px;
-  transition: background 0.2s ease;
-
-  &.on {
-    background: var(--color-primary);
-  }
-}
-
-.knob {
-  display: block;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.on .knob {
-  transform: translateX(20px);
 }
 
 .week-tabs {
   display: flex;
   gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 6px;
-  margin-bottom: 14px;
-  -webkit-overflow-scrolling: touch;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
 }
 
 .week-tab {
   position: relative;
-  flex: 0 0 auto;
-  min-width: 44px;
-  height: 36px;
-  border-radius: 11px;
-  background: #fff;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-soft);
+  flex: 1;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text-soft);
   font-size: 13px;
   font-weight: 600;
+  box-shadow: var(--shadow);
+  transition: background 0.15s ease, color 0.15s ease;
 
   &.active {
-    background: var(--color-primary);
-    border-color: var(--color-primary);
+    background: var(--primary);
     color: #fff;
+    box-shadow: var(--shadow-btn);
   }
 }
 
 .tab-dot {
   position: absolute;
-  top: 4px;
-  right: 5px;
-  width: 5px;
-  height: 5px;
+  top: 6px;
+  right: 8px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--primary);
 }
 
 .active .tab-dot {
-  background: #fff;
-}
-
-.day-card {
-  min-height: 160px;
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .day-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.day-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 700;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
 }
 
 .day-count {
   font-size: 12px;
-  color: var(--color-text-muted);
+  color: var(--text-muted);
+}
+
+.mini-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .day-empty {
-  padding: 36px 0;
+  margin: 0;
+  padding: 30px 0 22px;
   text-align: center;
-  color: var(--color-text-muted);
   font-size: 13px;
+  color: var(--text-muted);
+}
+
+.ex-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .ex-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--color-border);
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
 
   &:last-child {
     border-bottom: none;
+    padding-bottom: 0;
   }
 }
 
@@ -532,133 +388,59 @@ function goBack() {
 }
 
 .ex-name {
+  margin: 0;
   font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .ex-meta {
-  margin-top: 3px;
+  margin: 3px 0 0;
   font-size: 12px;
-  color: var(--color-text-soft);
-  display: flex;
-  gap: 5px;
-
-  .muted {
-    color: var(--color-text-muted);
-  }
+  color: var(--text-muted);
 }
 
 .ex-tools {
   display: flex;
-  gap: 2px;
+  gap: 3px;
   flex-shrink: 0;
 }
 
 .tool {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: var(--color-bg);
-  color: var(--color-text-soft);
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--bg);
+  color: var(--text-soft);
 
   &--danger {
-    color: #e05252;
+    color: var(--danger);
   }
-}
 
-.edit-footer {
-  margin-top: auto;
-  padding-top: 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.add-exercise {
-  min-height: 50px;
-}
-
-.modal-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(20, 24, 50, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  z-index: 50;
-}
-
-.modal {
-  width: 100%;
-  max-width: 360px;
-  padding: 24px 22px;
-}
-
-.modal-title {
-  margin: 0 0 18px;
-  font-size: 18px;
-  font-weight: 800;
+  &:disabled {
+    opacity: 0.35;
+  }
 }
 
 .form-row {
   display: flex;
-  gap: 12px;
-  margin-top: 14px;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .form-col {
   flex: 1;
+  min-width: 0;
 }
 
 .modal-error {
-  margin-top: 14px;
-  color: #c0392b;
+  margin: 12px 0 0;
   font-size: 13px;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 22px;
-
-  .btn {
-    flex: 1;
-    min-height: 46px;
-  }
-}
-
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: 40px;
-  transform: translateX(-50%);
-  background: rgba(30, 34, 60, 0.92);
-  color: #fff;
-  padding: 11px 18px;
-  border-radius: 999px;
-  font-size: 13px;
-  z-index: 60;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-}
-
-.modal-enter-active,
-.modal-leave-active,
-.toast-enter-active,
-.toast-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.modal-enter-from,
-.modal-leave-to,
-.toast-enter-from,
-.toast-leave-to {
-  opacity: 0;
+  color: var(--danger);
 }
 </style>
